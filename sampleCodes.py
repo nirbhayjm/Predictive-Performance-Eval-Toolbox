@@ -8,6 +8,7 @@ import matplotlib
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 import numpy as np
+from tabulate import tabulate
 from core import scorers, Process, augmenters, utils, mews, run
 
 if __name__ == "__main__":
@@ -16,9 +17,11 @@ if __name__ == "__main__":
         "-load",
         "--load_path",
         type=str,
-        default="logdata/run_data/9efe38a8e89a11ed8a72001a4a160196/checkpoints/online_preds_test.npz",
+        # default="../logdata/run_data/9efe38a8e89a11ed8a72001a4a160196/checkpoints/online_preds_test.npz",
+        default="../logdata/run_data/27b2e124f3ec11edbbb9ac1f6b21a51f/checkpoints/online_preds_val.npz",
     )
     parser.add_argument("--prob_threshold", type=float, default=0.5)
+    parser.add_argument("-uyc", "--use_younden_cutoff", type=int, default=1)
     args = parser.parse_args()
 
     # load sample data
@@ -31,14 +34,17 @@ if __name__ == "__main__":
     control = sampleData[
         "sampleControl"
     ]  # control data dim (patID, relative time in hours to recording ends, prediction)
+    if args.use_younden_cutoff:
+        args.prob_threshold = sampleData["younden_cutoff_th"]
     print(len(np.unique(case[:, 0])))
     print(len(np.unique(control[:, 0])))
+    print(f"Using threshold: {args.prob_threshold:.3f}")
 
     # define threshold or thresholds to be used, for probabilities, you can use probability percentage as threshold
-    thresh = np.arange(
-        4, 6
-    )  # in this example, two thresholds 4 and 5 are selected to generate MEWS triggers
-    # thresh = args.prob_threshold
+    # thresh = np.arange(
+    #     4, 6
+    # )  # in this example, two thresholds 4 and 5 are selected to generate MEWS triggers
+    thresh = [args.prob_threshold]
 
     # process case condition, convert predictions into triggers(alerts) with threshold
     # define prediction horizon and lead time
@@ -55,7 +61,6 @@ if __name__ == "__main__":
     case_count, case_count_raw = run(
         case, case_processor
     )  # case_count dim (#random selection, #pat with triggers, #pat without triggers)
-    import pdb; pdb.set_trace()
 
     # process control condition, comments same as above
     control_scorers = [scorers.PosNeg(tmin=0, tmax=np.inf)]
@@ -75,54 +80,77 @@ if __name__ == "__main__":
         total_positives = TP[0] + FN[0]
         total_negatives = FP[0] + TN[0]
 
+        metrics = {}
         # Sensitivity
-        TPR = TP / (total_positives)
+        metrics["TPR"] = TP / (total_positives)
         # Specificity
-        TNR = TN / (total_negatives)
+        metrics["TNR"] = TN / (total_negatives)
         # Precision or positive predictive value
-        PPV = TP / (TP + FP)
+        metrics["PPV"] = TP / (TP + FP)
         # work up to detection ratio
-        WDR = 1 / PPV
+        metrics["WDR"] = 1 / metrics["PPV"]
         # Negative predictive value
-        NPV = TN / (TN + FN)
+        metrics["NPV"] = TN / (TN + FN)
         # Fall out or false positive rate
-        FPR = FP / (total_negatives)
+        metrics["FPR"] = FP / (total_negatives)
         # False negative rate
-        FNR = FN / (total_positives)
+        metrics["FNR"] = FN / (total_positives)
         # accuracy
-        ACC = (TP + TN) / (
+        metrics["ACC"] = (TP + TN) / (
             total_negatives + total_positives
         )  # RanXiao: add ACC and F1 for
         # F1 scores
-        F1 = 2 * (PPV * TPR) / (PPV + TPR)
+        metrics["F1"] = (
+            2 * (metrics["PPV"] * metrics["TPR"]) / (metrics["PPV"] + metrics["TPR"])
+        )
 
         print("Performance metrics with threshold " + str(thresh[i]) + ":")
-        print("TPR", "FPR", "PPV", "NPV", "TNR", "FNR", "WDR", "ACC", "F1")
-        print("Mean")
-        print(
-            np.array(
-                [np.mean(x) for x in [TPR, FPR, PPV, NPV, TNR, FNR, WDR, ACC, F1]]
-            ).T
-        )
-        print("Std")
-        print(
-            np.array(
-                [np.std(x) for x in [TPR, FPR, PPV, NPV, TNR, FNR, WDR, ACC, F1]]
-            ).T
-        )
-        print("\n")
+        # print("TPR", "FPR", "PPV", "NPV", "TNR", "FNR", "WDR", "ACC", "F1")
+        out_table = []
+        headers = ["TPR", "FPR", "PPV", "NPV", "TNR", "FNR", "WDR", "ACC", "F1"]
+        out_table.append(headers)
+
+        mean_dict = {key: np.mean(arr) for key, arr in metrics.items()}
+        std_dict = {key: np.std(arr) for key, arr in metrics.items()}
+        val_row = []
+        for key in headers:
+            _mean = mean_dict[key]
+            _std = std_dict[key]
+            val_row.append(f"{_mean:.2f} ({_std:.2f})")
+
+        out_table.append(val_row)
+        out_table_str = tabulate(out_table)
+        print(out_table_str)
+        with open(os.path.join("results", "Performance_metrics.txt"), "w") as outfile:
+            outfile.write(out_table_str)
+
+        # print("Mean")
+        # print(
+        #     np.array(
+        #         [np.mean(x) for x in [TPR, FPR, PPV, NPV, TNR, FNR, WDR, ACC, F1]]
+        #     ).T
+        # )
+        # print("Std")
+        # print(
+        #     np.array(
+        #         [np.std(x) for x in [TPR, FPR, PPV, NPV, TNR, FNR, WDR, ACC, F1]]
+        #     ).T
+        # )
+        # print("\n")
+
         # save performance metrics based on each metrics to file
         np.savez(
-            f"./Performance_metrics_threshold_{thresh[i]}.npz",
-            TPR=TPR,
-            TNR=TNR,
-            PPV=PPV,
-            WDR=WDR,
-            NPV=NPV,
-            FPR=FPR,
-            FNR=FNR,
-            ACC=ACC,
-            F1=F1,
+            f"./Performance_metrics_threshold_{thresh[i]:.2f}.npz",
+            **metrics,
+            # TPR=TPR,
+            # TNR=TNR,
+            # PPV=PPV,
+            # WDR=WDR,
+            # NPV=NPV,
+            # FPR=FPR,
+            # FNR=FNR,
+            # ACC=ACC,
+            # F1=F1,
         )
 
     """This following block of codes demostrates the calculation of false alarm proportion (FAP), defined by the proportion of 
