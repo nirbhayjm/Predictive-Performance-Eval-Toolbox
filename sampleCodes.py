@@ -36,9 +36,9 @@ if __name__ == "__main__":
     ]  # control data dim (patID, relative time in hours to recording ends, prediction)
     if args.use_younden_cutoff:
         args.prob_threshold = sampleData["younden_cutoff_th"]
-    print(len(np.unique(case[:, 0])))
-    print(len(np.unique(control[:, 0])))
-    print(f"Using threshold: {args.prob_threshold:.3f}")
+    # print(len(np.unique(case[:, 0])))
+    # print(len(np.unique(control[:, 0])))
+    # print(f"Using threshold: {args.prob_threshold:.3f}")
 
     # define threshold or thresholds to be used, for probabilities, you can use probability percentage as threshold
     # thresh = np.arange(
