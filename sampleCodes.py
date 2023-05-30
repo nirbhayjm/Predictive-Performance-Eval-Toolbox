@@ -82,26 +82,30 @@ if __name__ == "__main__":
 
         metrics = {}
         # Sensitivity
-        metrics["TPR"] = TP / (total_positives)
+        metrics["TPR"] = TP / (total_positives + 1.0e-8)
         # Specificity
-        metrics["TNR"] = TN / (total_negatives)
+        metrics["TNR"] = TN / (total_negatives + 1.0e-8)
+        # # Younden's J-statistic @ given threshold: Sensitivity + Specificity - 1
+        # metrics["YJS"] = metrics["TPR"] + metrics["TNR"] - 1
         # Precision or positive predictive value
-        metrics["PPV"] = TP / (TP + FP)
+        metrics["PPV"] = TP / (TP + FP + 1.0e-8)
         # work up to detection ratio
-        metrics["WDR"] = 1 / metrics["PPV"]
+        metrics["WDR"] = 1 / (metrics["PPV"] + 1.0e-8)
         # Negative predictive value
-        metrics["NPV"] = TN / (TN + FN)
+        metrics["NPV"] = TN / (TN + FN + 1.0e-8)
         # Fall out or false positive rate
-        metrics["FPR"] = FP / (total_negatives)
+        metrics["FPR"] = FP / (total_negatives + 1.0e-8)
         # False negative rate
-        metrics["FNR"] = FN / (total_positives)
+        metrics["FNR"] = FN / (total_positives + 1.0e-8)
         # accuracy
         metrics["ACC"] = (TP + TN) / (
-            total_negatives + total_positives
+            total_negatives + total_positives + 1.0e-8
         )  # RanXiao: add ACC and F1 for
         # F1 scores
         metrics["F1"] = (
-            2 * (metrics["PPV"] * metrics["TPR"]) / (metrics["PPV"] + metrics["TPR"])
+            2
+            * (metrics["PPV"] * metrics["TPR"])
+            / (metrics["PPV"] + metrics["TPR"] + 1.0e-8)
         )
 
         print("Performance metrics with threshold " + str(thresh[i]) + ":")
