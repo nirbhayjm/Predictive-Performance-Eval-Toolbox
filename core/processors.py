@@ -9,6 +9,8 @@ that we want to be resourceful and compute all scores of interest at the innermo
 processing class. In this way we do not process the data independently for each scoring function.
 
 """
+import os
+from multiprocessing import Pool
 from typing import Callable, Sequence
 
 import numpy as np
@@ -20,7 +22,15 @@ class Process(object):
     needed to augment data and calculate metrics/scores of interest
 
     """
-    def __init__(self, scorers: Sequence[Callable], augmenter: Callable, thresholds: Sequence[float], **kwargs):
+
+    def __init__(
+        self,
+        scorers: Sequence[Callable],
+        augmenter: Callable,
+        thresholds: Sequence[float],
+        use_mp_parallel: bool = False,
+        **kwargs
+    ):
         """
         Must be initialized with an iterable of callable functions that each take in
         data as an argument (scorers), a function to augment the data (augmenter),
@@ -35,6 +45,11 @@ class Process(object):
         self.augmenter = augmenter
 
         self.thresh = thresholds
+
+        self.use_mp_parallel = use_mp_parallel
+        if self.use_mp_parallel:
+            self._saved_data = None
+            self.n_available_cores = len(os.sched_getaffinity(0))
 
         for attribute, value in kwargs.items():
             setattr(self, attribute, value)
@@ -52,6 +67,9 @@ class Process(object):
         made for the model output, which may be any real valued number (-inf, +inf).
         :return:
         """
+        if self.use_mp_parallel:
+            return self.parallel_per_data(data=data)
+
         scores = []
         # Iterate through unique encounter ID's
         for patient in np.unique(data[:, 0]):
@@ -75,8 +93,55 @@ class Process(object):
                 cur_scores.append(cur_aug_scores)
             # Store all scores calculated for the current encounter. Note we use lists since the outputs of
             # each scoring function are not guaranteed to have the same dimensions
-            scores.append([[x[index] for x in cur_scores] for index in range(len(self.scorers))])
+            scores.append(
+                [[x[index] for x in cur_scores] for index in range(len(self.scorers))]
+            )
         return scores
+
+    def parallel_per_data(self, data: np.ndarray):
+        patient_id_list = np.unique(data[:, 0]).tolist()
+        self.saved_data = data
+
+        # scores = []
+        # for patient_id in patient_id_list:
+        #     scores.append(self.process_single_patient(patient_id))
+        with Pool(self.n_available_cores) as mp_pool:
+            mp_scores = mp_pool.map(self.process_single_patient, patient_id_list)
+
+        return mp_scores
+
+    def process_single_patient(self, patient_id):
+        parent_data = self.saved_data
+        # Select all data for the current encounter
+        cur_data = parent_data[parent_data[:, 0] == patient_id, :]
+
+        # Augment the data
+        augmented_data = self.augmenter(cur_data)
+
+        # Iterate through the augmented versions of the data
+        cur_scores = []
+        for cur_aug_data in augmented_data:
+            cur_aug_scores = []
+            # Iterate through the scoring functions, calculate scores, and store them
+            for scorer in self.scorers:
+                # For the current scorer, calculate the score for each threshold supplied
+                temp = []
+                for thresh in self.thresh:
+                    temp.append(scorer(data=cur_aug_data, threshold=thresh))
+                cur_aug_scores.append(temp)
+            cur_scores.append(cur_aug_scores)
+        # Store all scores calculated for the current encounter. Note we use lists since the outputs of
+        # each scoring function are not guaranteed to have the same dimensions
+        output = [[x[index] for x in cur_scores] for index in range(len(self.scorers))]
+        return output
+
+    @property
+    def saved_data(self):
+        return self._saved_data
+
+    @saved_data.setter
+    def saved_data(self, data: np.ndarray):
+        self._saved_data = data
 
     def stayon(self, data: np.ndarray):
         """
@@ -92,7 +157,7 @@ class Process(object):
         made for the model output, which may be probabilities [0,1] or any real valued number (-inf, +inf).
         :return:
         """
-        assert all(hasattr(self, x) for x in ['stayon_time'])
+        assert all(hasattr(self, x) for x in ["stayon_time"])
         scores = []
         for patient in np.unique(data[:, 0]):
             cur_data = data[data[:, 0] == patient, :]
@@ -107,14 +172,25 @@ class Process(object):
                     sorted_inds = np.argsort(cur_aug_data[:, 1])[::-1]
                     for thresh in self.thresh:
                         cur_aug_data_alt = cur_aug_data.copy()
-                        split_inds = np.where(np.diff(np.where(cur_aug_data[sorted_inds, 2] < thresh)[0]) > 1)[0]
-                        indexes = (0,) + tuple(dat + 1 for dat in split_inds) + (len(sorted_inds),)
+                        split_inds = np.where(
+                            np.diff(np.where(cur_aug_data[sorted_inds, 2] < thresh)[0])
+                            > 1
+                        )[0]
+                        indexes = (
+                            (0,)
+                            + tuple(dat + 1 for dat in split_inds)
+                            + (len(sorted_inds),)
+                        )
 
                         pos_inds = sorted_inds
                         neg_inds = []
                         if len(indexes) > 2:
                             off_inds = []
-                            l = [np.arange(start, end) for start, end in zip(indexes, indexes[1:]) if ((end - start) * self.interval) >= self.stayon_time]
+                            l = [
+                                np.arange(start, end)
+                                for start, end in zip(indexes, indexes[1:])
+                                if ((end - start) * self.interval) >= self.stayon_time
+                            ]
                             if len(l) > 0:
                                 off_inds = np.concatenate(l)
 
@@ -124,12 +200,17 @@ class Process(object):
                         cur_aug_data_alt[pos_inds, 2] = thresh
                         cur_aug_data_alt[neg_inds, 2] = 0
 
-                        temp_score.append(scorer(data=cur_aug_data_alt, threshold=thresh))
+                        temp_score.append(
+                            scorer(data=cur_aug_data_alt, threshold=thresh)
+                        )
                     cur_aug_scores.append(temp_score)
                 cur_scores.append(cur_aug_scores)
 
-            scores.append([[x[index] for x in cur_scores] for index in range(len(self.scorers))])
+            scores.append(
+                [[x[index] for x in cur_scores] for index in range(len(self.scorers))]
+            )
         return scores
+
 
 def run(data: np.ndarray, processor: Callable) -> "np.array":
     """
@@ -147,8 +228,13 @@ def run(data: np.ndarray, processor: Callable) -> "np.array":
     # Calculate number of scorers
     n = len(score[0])
     # Store the results of all the scores as a list of arrays (# Scorers x # Patients x # Thresholds x Dimension of Scorer)
-    raw_counts = [np.array([cur_score[index] for cur_score in score]) for index in range(n)]
+    raw_counts = [
+        np.array([cur_score[index] for cur_score in score]) for index in range(n)
+    ]
     # Add up all the scores for each randomized trial (# Scorers x # Randomizations x # Thresholds x Dimension of Scorer)
-    counts = [np.nansum(np.array([cur_score[index] for cur_score in score]), axis=0) for index in range(n)]
+    counts = [
+        np.nansum(np.array([cur_score[index] for cur_score in score]), axis=0)
+        for index in range(n)
+    ]
 
     return counts, raw_counts

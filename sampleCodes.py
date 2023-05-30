@@ -22,6 +22,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--prob_threshold", type=float, default=0.5)
     parser.add_argument("-uyc", "--use_younden_cutoff", type=int, default=1)
+    parser.add_argument("-pll", "--use_mp_parallel", type=int, default=1)
     args = parser.parse_args()
 
     # load sample data
@@ -55,7 +56,10 @@ if __name__ == "__main__":
     augmenter = augmenters.NoAugment()
     # a class to integrate all parameters together
     case_processor = Process(
-        thresholds=thresh, scorers=case_scorers, augmenter=augmenter
+        thresholds=thresh,
+        scorers=case_scorers,
+        augmenter=augmenter,
+        use_mp_parallel=args.use_mp_parallel,
     ).per_data
     # actual function to calculate number of records with triggers above the given thresholds
     case_count, case_count_raw = run(
@@ -67,7 +71,10 @@ if __name__ == "__main__":
     # 100 random selection of time windows (12 hours) from each patient record, sort these windown (if choose not to sort, assign 0 to the is_sort flag) by timeline
     augmenter = augmenters.RandomWindows(num_samples=100, duration=12, is_sort=1)
     control_processor = Process(
-        thresholds=thresh, scorers=control_scorers, augmenter=augmenter
+        thresholds=thresh,
+        scorers=control_scorers,
+        augmenter=augmenter,
+        use_mp_parallel=args.use_mp_parallel,
     ).per_data
     control_count, control_count_raw = run(control, control_processor)
 
