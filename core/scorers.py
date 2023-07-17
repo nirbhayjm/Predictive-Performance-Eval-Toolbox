@@ -1,4 +1,4 @@
-from typing import Sequence
+from typing import Sequence, List
 
 import numpy as np
 
@@ -41,7 +41,7 @@ class PosNeg(object):
         self.tmin = tmin
         self.tmax = tmax
 
-    def __call__(self, data: np.ndarray, threshold: float):
+    def __call__(self, data: np.ndarray, threshold: List[float]):
         """
         This function takes data for a particular patient and calculates
         two booleans indicating if the model output did and did not cross the supplied threshold.
@@ -56,6 +56,9 @@ class PosNeg(object):
         :return: List of two booleans [Model output ever cross threshold?, Model output never cross threshold?]
         """
 
+        assert len(threshold) == 1, "Currently only 1 threshold at a time supported."
+        thresh_arr = np.array(threshold)
+
         # Find the candidate time points in the data
         if data == []:
             return [np.nan, np.nan]
@@ -64,11 +67,23 @@ class PosNeg(object):
         # Check that this patient has any data within tmin and tmax
         if any(time_inds):
             # Find the threshold crossings
-            crossings = data[time_inds, 2] >= threshold
+            preds = data[time_inds, 2][..., np.newaxis]
+            th_arr = thresh_arr[np.newaxis, ...]
+
+            crossings = preds >= th_arr
             # Determine if model output ever crossed the threshold
-            pos = int(any(crossings))
+            # pos = int(any(crossings))
+            pos = np.any(crossings, axis=0)
             # Determine if model output never crossed the threshold
-            neg = int(all(~crossings))
+            # neg = int(all(~crossings))
+            # neg = np.all(np.logical_not(crossings), axis=0)
+            neg = np.logical_not(pos)
+
+            # TODO: Make this work for len(threshold) > 1
+            pos = pos[0]
+            neg = neg[0]
+
+            # import pdb; pdb.set_trace()
             return [pos, neg]
         # If no candidate time points exist return nan's
         else:
@@ -107,7 +122,7 @@ class ProportionWarning(object):
         # If not candidates exist, return nan
         else:
             return [np.nan]
-        
+
 class ProportionWarning_case(object): # RanXiao, function added to handle False alarm proportion using whole duration omitting prediction horizon
     def __init__(self, tlead: float, twin: float):
         """
@@ -140,9 +155,9 @@ class ProportionWarning_case(object): # RanXiao, function added to handle False 
             return [np.sum(crossings) / np.sum(time_inds)]
         # If not candidates exist, return nan
         else:
-            return [np.nan] 
-        
-class HourlyFalseAlarmRate(object):# RanXiao, function looks for number of false alarms/hour in control 
+            return [np.nan]
+
+class HourlyFalseAlarmRate(object):# RanXiao, function looks for number of false alarms/hour in control
     def __init__(self, tmin: float, tmax: float):
         """
 
@@ -176,8 +191,8 @@ class HourlyFalseAlarmRate(object):# RanXiao, function looks for number of false
         # If not candidates exist, return nan
         else:
             return [np.nan]
-        
-class HourlyFalseAlarmRate_case(object): # RanXiao, function looks for number of false alarms/hour in case out of prediction horizon (too late + too early) 
+
+class HourlyFalseAlarmRate_case(object): # RanXiao, function looks for number of false alarms/hour in case out of prediction horizon (too late + too early)
     def __init__(self, tlead: float, twin: float):
         """
 
@@ -209,7 +224,7 @@ class HourlyFalseAlarmRate_case(object): # RanXiao, function looks for number of
             return [np.sum(crossings) / np.ceil(max(data[:, 1])-min(data[:, 1])-self.twin)]
         # If not candidates exist, return nan
         else:
-            return [np.nan]      
+            return [np.nan]
 
 class HourlyFPR_case(object): # RanXiao, function added to handle HOURLY False alarm rate using whole duration omitting prediction horizon
     def __init__(self, tlead: float, twin: float,tmax: float):
@@ -240,8 +255,8 @@ class HourlyFPR_case(object): # RanXiao, function added to handle HOURLY False a
             # Make copy of the data to be safe
             data_time = data.copy()[time_inds, :]
             # Find crossings within th time window of interest
-            crossings = data_time[:, 2] >= threshold   
-            
+            crossings = data_time[:, 2] >= threshold
+
             hourlyrate = []#Ran Xiao: this block calculate hourly FAR within in lead time
             hourly_start = 0
             hourly_end = 1
@@ -250,10 +265,10 @@ class HourlyFPR_case(object): # RanXiao, function added to handle HOURLY False a
                 if any(hourly_ind):
                     hourlyrate.append(np.sum(crossings[hourly_ind]) / np.sum(hourly_ind))
                 else:
-                    hourlyrate.append(np.nan)    
+                    hourlyrate.append(np.nan)
                 hourly_start+=1
-                hourly_end+=1   
-                    
+                hourly_end+=1
+
             hourly_start = self.tlead+self.twin #Ran Xiao: this block calculate hourly FAR outside lead time + prediction horizon
             hourly_end = hourly_start+1
             while hourly_start<max(data_time[:,1]):
@@ -263,13 +278,13 @@ class HourlyFPR_case(object): # RanXiao, function added to handle HOURLY False a
                 else:
                     hourlyrate.append(np.nan)
                 hourly_start+=1
-                hourly_end+=1      
-                 
+                hourly_end+=1
+
             return [np.nanmean(hourlyrate)]
         # If not candidates exist, return nan
         else:
-            return [np.nan]   
-        
+            return [np.nan]
+
 class HourlyFPR(object): # RanXiao, function added to handle HOURLY False alarm rate using whole duration for control data
     def __init__(self, tmin: float, tmax: float):
         """
@@ -309,12 +324,12 @@ class HourlyFPR(object): # RanXiao, function added to handle HOURLY False alarm 
                 else:
                     hourlyrate.append(np.nan)
                 hourly_start+=1
-                hourly_end+=1                       
+                hourly_end+=1
             return [np.nanmean(hourlyrate)]
         # If not candidates exist, return nan
         else:
-            return [np.nan]   
-        
+            return [np.nan]
+
 class Profile(object):
     def __init__(self, tmin: float, tmax: float):
         """

@@ -45,7 +45,7 @@ if __name__ == "__main__":
     # thresh = np.arange(
     #     4, 6
     # )  # in this example, two thresholds 4 and 5 are selected to generate MEWS triggers
-    thresh = [args.prob_threshold]
+    thresh = [args.prob_threshold, args.prob_threshold + 0.1]
 
     # process case condition, convert predictions into triggers(alerts) with threshold
     # define prediction horizon and lead time

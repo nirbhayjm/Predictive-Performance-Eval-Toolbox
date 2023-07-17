@@ -88,8 +88,9 @@ class Process(object):
                     # For the current scorer, calculate the score for each threshold supplied
                     temp = []
                     for thresh in self.thresh:
-                        temp.append(scorer(data=cur_aug_data, threshold=thresh))
+                        temp.append(scorer(data=cur_aug_data, threshold=[thresh]))
                     cur_aug_scores.append(temp)
+                    # cur_aug_scores = scorer(data=cur_aug_data, threshold=self.thresh)
                 cur_scores.append(cur_aug_scores)
             # Store all scores calculated for the current encounter. Note we use lists since the outputs of
             # each scoring function are not guaranteed to have the same dimensions
@@ -127,7 +128,7 @@ class Process(object):
                 # For the current scorer, calculate the score for each threshold supplied
                 temp = []
                 for thresh in self.thresh:
-                    temp.append(scorer(data=cur_aug_data, threshold=thresh))
+                    temp.append(scorer(data=cur_aug_data, threshold=[thresh]))
                 cur_aug_scores.append(temp)
             cur_scores.append(cur_aug_scores)
         # Store all scores calculated for the current encounter. Note we use lists since the outputs of
